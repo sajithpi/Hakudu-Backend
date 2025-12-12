@@ -1,0 +1,83 @@
+version: "3.8"
+
+services:
+  haikudo-api:
+    build: .
+    image: haikudo-backend:latest
+    deploy:
+      replicas: 2
+      update_config:
+        parallelism: 1
+        delay: 10s
+      restart_policy:
+        condition: on-failure
+    environment:
+      - DATABASE_URL=postgresql://haikudo_user:haikudo_password@postgres:5432/haikudo_db
+      - SECRET_KEY=your-secret-key-here-change-in-production
+      - DEBUG=False
+      - REDIS_URL=redis://redis:6379/0
+      - RATE_LIMIT_PER_MINUTE=60
+      - CORS_ORIGINS=["*"]
+      - TRUSTED_HOSTS=["localhost","127.0.0.1"]
+    ports:
+      - "8000:8000"
+    depends_on:
+      - postgres
+      - redis
+    networks:
+      - haikudo-network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  postgres:
+    image: postgres:15-alpine
+    deploy:
+      replicas: 1
+      restart_policy:
+        condition: on-failure
+    environment:
+      - POSTGRES_USER=haikudo_user
+      - POSTGRES_PASSWORD=haikudo_password
+      - POSTGRES_DB=haikudo_db
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    ports:
+      - "5432:5432"
+    networks:
+      - haikudo-network
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U haikudo_user -d haikudo_db"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  redis:
+    image: redis:7-alpine
+    deploy:
+      replicas: 1
+      restart_policy:
+        condition: on-failure
+    command: redis-server --appendonly yes --maxmemory 256mb --maxmemory-policy allkeys-lru
+    volumes:
+      - redis_data:/data
+    ports:
+      - "6379:6379"
+    networks:
+      - haikudo-network
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+volumes:
+  postgres_data:
+  redis_data:
+
+networks:
+  haikudo-network:
+    driver: overlay
+    attachable: true
